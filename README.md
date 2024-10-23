@@ -2,13 +2,18 @@
 
 ### current questions
 75: should the real reward be used or the estimated reward to calculate the reward of the trajectory? In the atari paper the estimated reward is being used, I think. But in my opinion using the real reward should simulate the human feedback better.
+
 106: the real reward is being used to optimze the policy, should the estimated reward be used?
 
 ### to do
 137: Calculating the loss with the atari paper formula in 2.2.3, currently I am not including the third case of sigma = 0.5
+
 optimze the code to optimze the policy while creating trajectories for the human feedback
+
 test with more environments
+
 replace temporary code/algorithms with rllib algorithms
+
 add ploting for better visualization
 
 ### current results interpretation
