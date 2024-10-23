@@ -5,12 +5,15 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 
+
 device = "cpu"
 
+# The probabily function from the atari paper
 def probability2(a, b):
     p = np.exp(a) / (np.exp(a) + np.exp(b))
     return (p, 1-p)
 
+# My probabily function based on the atari paper
 def probability3(a, b, eps):
     diff = np.abs(a-b)
     p_undecided = np.exp(2*eps) / (np.exp(diff) + np.exp(2*eps))
@@ -18,7 +21,7 @@ def probability3(a, b, eps):
     p_a, p_b = probability2(a, b)
     return (q_undecided * p_a, q_undecided * p_b, p_undecided)
 
-# Define the policy network
+# The deep neural network which will be used for the policy and reward estimator
 class DQN(nn.Module):
     def __init__(self, input_dim, output_dim, softmax = True):
         super(DQN, self).__init__()
@@ -40,10 +43,12 @@ env = gym.make("CartPole-v1")
 n_observations = env.observation_space.shape[0]
 n_actions = env.action_space.n
 
-# Initialize the policy network and optimizer
-policy = DQN(n_observations, n_actions)
-reward_estimator = DQN(n_observations + 1, 1, softmax=False)
+# Initialize the policy network and its optimizer
+policy = DQN(n_observations, n_actions) # takes in a state and returns the probabilities for actions
 policy_optimizer = optim.Adam(policy.parameters(), lr=0.01)
+
+# Initialize the reward estimator network and its optimizer
+reward_estimator = DQN(n_observations + 1, 1, softmax=False) # takes in a state and an action and returns an estimated reward
 reward_optimizer = optim.Adam(reward_estimator.parameters(), lr=0.01)
 
 # Function to collect a trajectory
@@ -67,18 +72,26 @@ def collect_trajectory(policy, max_steps=0):
 
 # Define the reward of the trajectory
 def trajectory_reward(trajectory):
+    # currently using the real reward not the estimated reward
     return sum(step[2] for step in trajectory)
 
 # Simulated human feedback function
 def simulated_human_feedback(trajectory1, trajectory2, eps=1):
     total_reward1 = trajectory_reward(trajectory1)
     total_reward2 = trajectory_reward(trajectory2)
+    
+    # Get the probabilities of the human feedback
     preferred_probs = probability3(total_reward1, total_reward2, eps)
+    
+    # Choose one feedback based on the probabilities
     preferred = torch.multinomial(torch.tensor(preferred_probs), 1).item()   
+    
+    # Convert the index to a real value
     if preferred == 2:
         preferred = 0.5
     return preferred, preferred_probs
 
+# Optimze the policy
 def optimize_policy(num_iterations):
     for _ in range(num_iterations):
         policy_optimizer.zero_grad()
@@ -102,18 +115,18 @@ def optimize_policy(num_iterations):
         # Calculate action probabilities
         action_probs = policy(states)
         
-        # calculate loss
-        # loss = -torch.log(action_probs.gather(1, actions.unsqueeze(1))).sum() * cum_reward
+        # Calculate loss
         loss = -(torch.log(action_probs.gather(1, actions.unsqueeze(1))) * torch.tensor(discounted_rewards, dtype=torch.float32)).sum()
         
         # Update policy        
         loss.backward()
         policy_optimizer.step()
 
-    
+# Optimze the estimated reward with the simulated human feedback
 def optimize_reward(num_iterations):
     reward_optimizer.zero_grad()
     
+    # Create multiple pairs of trajectories and the simulated human feedback on them
     feedbacks = []
     for iteration in range(num_iterations):
         trajectory1 = collect_trajectory(policy)
@@ -121,7 +134,7 @@ def optimize_reward(num_iterations):
         feedback, p = simulated_human_feedback(trajectory1, trajectory2)
         feedbacks.append((feedback, p))
     
-    #calculate loss
+    # Calculate loss based on the atari paper formula in 2.2.3
     loss = 0
     for feedback, p in feedbacks:
         m1, m2 = 0, 0

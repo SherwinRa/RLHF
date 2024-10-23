@@ -7,7 +7,9 @@
 ### to do
 137: Calculating the loss with the atari paper formula in 2.2.3, currently I am not including the third case of sigma = 0.5
 optimze the code to optimze the policy while creating trajectories for the human feedback
+test with more environments
 replace temporary code/algorithms with rllib algorithms
+add ploting for better visualization
 
 ### current results interpretation
 neither the total reward is increasing nor is the MSE of the estimated reward decreasing. The optimizer I implemented is not working yet.
