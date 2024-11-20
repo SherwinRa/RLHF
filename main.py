@@ -14,20 +14,21 @@ from dqn_models import DQN
 device = "cpu"
 min_positive_float32 = torch.finfo(torch.float32).tiny
 
-EPISODES = 50
-POLICY_ITERATIONS_PER_EPISODE = 20
-REWARD_ITERATIONS_PER_EPISODE = 10
+TOTAL_EPISODES = 500 # 1000
+POLICY_ITERATIONS_PER_BATCH = 50
+REWARD_ITERATIONS_PER_BATCH = 20
+UNCERTAINTY_REGION_EPSILON = 0.5 # 0.5
+IGNORE_UNCERTAINTY_REGION = False
 
-POLICY_LEARNING_RATE = 0.01 # 0.001
-REWARD_LEARNING_RATE = 0.00001
-LEARNING_RATE = 0.001
+POLICY_LEARNING_RATE = 0.001 # 0.001
+REWARD_LEARNING_RATE = 0.0002 # 0.0001
 TRAJECTORY_MEMORY_SIZE = 100
-BATCH_SIZE = 15
+#BATCH_SIZE = 15
 
 # Hyperparameters for exploration
 GAMMA = 0.99 # Discount factor
 EPSILON = 1.0
-EPSILON_DECAY = 0.995
+EPSILON_DECAY = 0.995 # 0.995
 MIN_EPSILON = 0.01
 
 # Create the environment
@@ -43,135 +44,43 @@ policy_optimizer = optim.Adam(policy.parameters(), lr=POLICY_LEARNING_RATE)
 reward_estimator = DQN(n_observations + 1, 1) # takes in a state and an action and returns an estimated reward
 reward_optimizer = optim.Adam(reward_estimator.parameters(), lr=REWARD_LEARNING_RATE)
 
-#policy_criterion = nn.SmoothL1Loss()
-policy_criterion = nn.MSELoss()
-
 # Create the trajectory replay memory
 trajectory_memory = deque(maxlen=TRAJECTORY_MEMORY_SIZE)
 
 # Init Plotter for visualization of the reward
-plt = Plotter()
-
-# Function to select an action
-def select_action(state, policy):
-    with torch.no_grad():
-        state_tensor = torch.tensor(state, dtype=torch.float32, device=device)
-        action_probs = policy(state_tensor)
-        #action_probs = F.softmax(action_probs, dim=-1)
-        #action = torch.multinomial(action_probs, 1).item()
-        action = action_probs.argmax().item()
-        return action
-
-# Function to collect a trajectory
-def collect_trajectory(policy, max_steps=0):
-    global EPSILON
-    steps = 0
-    state, _ = env.reset()
-    trajectory = []
-    done = False
-    
-    while not done:
-        # Select a random action or use the policy to select an action
-        if random.random() < EPSILON:
-            action = env.action_space.sample()
-        else:
-            action = select_action(state, policy)
-        
-        next_state, reward, terminated, truncated, _ = env.step(action)
-        steps += 1
-        done = terminated or truncated or (steps > max_steps and max_steps > 0)
-        trajectory.append((state, action, reward))
-        state = next_state
-    
-    # Plot the total reward, in the cartpole env the total steps equals the total reward
-    plt.plot_durations(steps) #tmp
-    
-    # Reduce epsilion to reduce the exploration over time
-    EPSILON = max(MIN_EPSILON, EPSILON * EPSILON_DECAY)
-
-    return trajectory
-
-# Optimze the policy
-def optimize_policy(num_iterations):
-    for _ in range(num_iterations):
-        # Collect a trajectory and save it to memory   
-        trajectory = collect_trajectory(policy)
-        trajectory_memory.append(trajectory)
-        
-        # If there are enough trajectories saved, optimize the policy with a sample of them
-        if len(trajectory_memory) > BATCH_SIZE:
-            batch = random.sample(trajectory_memory, BATCH_SIZE)
-        
-            # Prepare batch data
-            states = []
-            next_states = []
-            actions = []
-            #rewards = []
-            dones = []
-            for traj in batch:
-                states.extend([step[0] for step in traj[:-1]])
-                next_states.extend([step[0] for step in traj[1:]])
-                actions.extend([step[1] for step in traj[:-1]])
-                #rewards.extend([step[2] for step in traj[:-1]])
-                dones.extend(0 for step in traj[:-2])
-                dones.append(1)
-            
-            # Convert the data to tensors
-            states = torch.tensor(np.array(states), dtype=torch.float32, device=device)
-            next_states = torch.tensor(np.array(next_states), dtype=torch.float32, device=device)
-            actions = torch.tensor(np.array(actions), dtype=torch.long, device=device)
-            #rewards = torch.tensor(np.array(rewards), dtype=torch.float32, device=device) # uses real reward, but should be using the estimated reward
-            dones = torch.tensor(np.array(dones), dtype=torch.float32, device=device)
-            
-            # Calculate an estimate of the reward with the reward estimator
-            state_action_pairs = torch.cat([states, actions.unsqueeze(1).float()], dim=1)
-            rewards = reward_estimator(state_action_pairs).squeeze()
-        
-            # Calculate state-action values
-            action_probs = policy(states)
-            state_action_values = action_probs.gather(1, actions.unsqueeze(1))
-                     
-            # Calculate expected state-action values
-            next_state_action_values = policy(next_states).max(1)[0]
-            expected_state_action_values = rewards + GAMMA * next_state_action_values * (1 - dones)
-        
-            # Calculate loss      
-            loss = policy_criterion(state_action_values, expected_state_action_values.unsqueeze(1))
-            #plt.plot_durations(loss.item()) #tmp
-
-            # Update policy 
-            policy_optimizer.zero_grad()       
-            loss.backward()
-            policy_optimizer.step()
+plt = Plotter(ignore_eps=IGNORE_UNCERTAINTY_REGION, eps=UNCERTAINTY_REGION_EPSILON, policy_lr=POLICY_LEARNING_RATE, reward_lr=REWARD_LEARNING_RATE, policy_reward_ratio=f"{POLICY_ITERATIONS_PER_BATCH}/{REWARD_ITERATIONS_PER_BATCH}")
 
 # The probabily function from the atari paper
 def probability2(a, b):
-    p = np.exp(a) / (np.exp(a) + np.exp(b))
-    return (p, 1-p)
+    a = torch.as_tensor(a)
+    b = torch.as_tensor(b)
+    
+    p = 1 / (1.0 + torch.exp(b-a))
+    return torch.stack([p, 1-p])
 
 # My probabily function based on the atari paper
-def probability3(a, b, eps):    
-    diff = np.abs(a-b)
-    p_undecided = np.exp(2*eps) / (np.exp(diff) + np.exp(2*eps))
-    q_undecided = 1 - p_undecided
-    p_a, p_b = probability2(a, b)
-    return (q_undecided * p_a, q_undecided * p_b, p_undecided)
+def probability3(a, b, eps=0.5, ignore_eps=IGNORE_UNCERTAINTY_REGION):
+    if ignore_eps:
+        return probability2(a, b)
+    
+    a = torch.as_tensor(a)
+    b = torch.as_tensor(b)
+    eps = torch.as_tensor(eps)
 
-# My probabily function based on the atari paper with torch
-def probability3torch(estimated_reward1, estimated_reward2, eps=1.0):
-    diff = torch.abs(estimated_reward1 - estimated_reward2)
-    eps = torch.tensor(eps)
-    p_undecided = torch.exp(2*eps) / (torch.exp(diff) + torch.exp(2*eps))
-    q_undecided = 1 - p_undecided
-    p_a = torch.exp(estimated_reward1) / (torch.exp(estimated_reward1) + torch.exp(estimated_reward2))
-    p_b = 1 - p_a
-    return torch.stack([q_undecided * p_a, q_undecided * p_b, p_undecided])
+    diff = torch.abs(a - b)
+    pq_undecided = probability2(2*eps, diff)
+    p_undecided, q_undecided = pq_undecided[0], pq_undecided[1]
+    p_a, p_b = probability2(a, b) * q_undecided
 
-# Estimate an reward based on a state and action with the reward estimator
-def estimate_reward(state, action):    
-    state_tensor = torch.FloatTensor(state)
-    estimated_reward = reward_estimator(torch.cat((state_tensor, torch.tensor([action])), 0)).item()
-    return estimated_reward
+    return torch.stack([p_a, p_b, p_undecided])
+
+# Estimate an reward based on a tensor of states and a tensor of actions with the reward estimator
+def estimate_reward(states, actions):
+    states = torch.as_tensor(states)
+    actions = torch.as_tensor(actions)
+    state_action_pairs = torch.cat([states, actions.unsqueeze(1).float()], dim=1)
+    rewards = reward_estimator(state_action_pairs).squeeze()
+    return rewards
 
 # Define the reward of a trajectory
 def trajectory_reward(trajectory):
@@ -179,7 +88,10 @@ def trajectory_reward(trajectory):
 
 # Define the estimated reward of a trajectory
 def trajectory_estimated_reward(trajectory):
-    estimated_reward = sum(reward_estimator(torch.cat((torch.FloatTensor(step[0]), torch.tensor([step[1]])), 0)) for step in trajectory)
+    states, actions, rewards = zip(*trajectory)
+    states = torch.tensor(np.array(states), dtype=torch.float32, device=device)
+    estimated_reward = torch.sum(estimate_reward(states, actions))
+    #estimated_reward = sum(reward_estimator(torch.cat((torch.FloatTensor(step[0]), torch.tensor([step[1]])), 0)) for step in trajectory)
     
     # Check the reward estimator for gradient explosion
     if torch.isnan(estimated_reward):
@@ -193,24 +105,100 @@ def trajectory_estimated_reward(trajectory):
     return estimated_reward
 
 # Simulated human feedback function
-def simulated_human_feedback(trajectory1, trajectory2, eps=1, estimate=False):
-    if estimate:
-        total_reward1 = trajectory_estimated_reward(trajectory1)
-        total_reward2 = trajectory_estimated_reward(trajectory2)
-    else:
-        total_reward1 = trajectory_reward(trajectory1)
-        total_reward2 = trajectory_reward(trajectory2)
+def simulated_human_feedback(trajectory1, trajectory2, eps=0.5):
+    total_reward1 = trajectory_reward(trajectory1)
+    total_reward2 = trajectory_reward(trajectory2)
         
     # Get the probabilities of the human feedback
     preferred_probs = probability3(total_reward1, total_reward2, eps)
         
     # Choose one feedback based on the probabilities
-    preferred = torch.multinomial(torch.tensor(preferred_probs), 1).item()
+    #preferred = torch.multinomial(torch.tensor(preferred_probs), 1).item()
+    preferred = torch.multinomial(preferred_probs, 1).item()
     
     # Convert the index to a real value
     if preferred == 2:
         preferred = 0.5
     return preferred, preferred_probs
+
+
+# Function to select an action
+def select_action(state, policy):
+    state_tensor = torch.tensor(state, dtype=torch.float32, device=device)
+    action_probs = policy(state_tensor)
+    #action_probs = torch.softmax(action_probs, dim=-1)
+    #action = torch.multinomial(action_probs, 1).item()
+    action_probs = torch.log_softmax(action_probs, dim=-1)
+    action = torch.distributions.Categorical(logits=action_probs).sample().item()
+    #action = action_probs.argmax().item()
+    return action, action_probs
+
+# Function to collect a trajectory
+def collect_trajectory(policy, max_steps=0):
+    global EPSILON
+    state, _ = env.reset()
+    trajectory = []
+    log_probs = []
+    done = False
+    
+    for step in range(max_steps):
+        action, probs = select_action(state, policy)
+        
+        # Select a random action or use the policy to select an action
+        if random.random() < EPSILON:
+            action = env.action_space.sample()
+        
+        next_state, reward, terminated, truncated, _ = env.step(action)
+        trajectory.append((state, action, reward))
+        
+        #log_prob = torch.log(probs[action].clamp(min=min_positive_float32))
+        log_prob = probs[action]
+        log_probs.append(log_prob)
+        
+        if terminated or truncated:
+            break
+        
+        state = next_state      
+    
+    # Plot the total reward, in the cartpole env the total steps equals the total reward
+    plt.plot_durations(step + 1) #tmp
+    #plt.plot_durations(trajectory_reward(trajectory)) #tmp
+    
+    # Reduce epsilion to reduce the exploration over time
+    EPSILON = max(MIN_EPSILON, EPSILON * EPSILON_DECAY)
+
+    return trajectory, torch.stack(log_probs)
+
+# Optimize the policy with gradient decent
+def optimize_policy(num_iterations):
+    for _ in range(num_iterations):
+        # Collect a trajectory and save it to memory   
+        trajectory, log_probs = collect_trajectory(policy, max_steps=510)
+        trajectory_memory.append(trajectory)
+        
+        states, actions, _ = zip(*trajectory)
+        states = torch.tensor(np.array(states), dtype=torch.float32, device=device)
+        #with torch.no_grad():
+            #rewards = torch.tensor(np.array(rewards), dtype=torch.float32, device=device)
+        
+        #with torch.no_grad():
+        rewards = estimate_reward(states, actions)
+        
+        discounted_rewards = torch.zeros_like(rewards)
+        R = 0
+        for i in reversed(range(len(rewards))):
+            R = rewards[i] + GAMMA * R
+            discounted_rewards[i] = R
+        
+        discounted_rewards = (discounted_rewards - discounted_rewards.mean()) / (discounted_rewards.std() + 1e-9)
+                
+        policy_loss = -torch.sum(log_probs * discounted_rewards)
+
+        policy_optimizer.zero_grad()       
+        policy_loss.backward()
+        policy_optimizer.step()
+        
+        #plt.plot_durations(policy_loss.item())
     
 # Optimze the estimated reward with the simulated human feedback
 def optimize_reward(num_iterations):
@@ -226,10 +214,11 @@ def optimize_reward(num_iterations):
         estimated_reward2 = trajectory_estimated_reward(trajectory2)
                 
         # Get simulated human feedback (using actual rewards)
-        feedback, _ = simulated_human_feedback(trajectory1, trajectory2, estimate=False)
+        with torch.no_grad():
+            feedback, _ = simulated_human_feedback(trajectory1, trajectory2, eps=UNCERTAINTY_REGION_EPSILON)
         
         # Calculate probabilities based on estimated rewards
-        probs = probability3torch(estimated_reward1, estimated_reward2)
+        probs = probability3(estimated_reward1, estimated_reward2, eps=UNCERTAINTY_REGION_EPSILON)
         
         # Ensure no zero probabilities
         probs = torch.clamp(probs, min=min_positive_float32)
@@ -249,10 +238,34 @@ def optimize_reward(num_iterations):
     
     #plt.plot_durations(loss.item()) #tmp
 
+# Compare the estimated reward with the actual reward by calculating the MSE
+def compare_estimate_reward(num_iterations):
+    estimated_probs_list = []
+    real_probs_list = []
+    for iteration in range(num_iterations):
+        with torch.no_grad():
+            trajectory1, trajectory2 = random.sample(trajectory_memory, 2)
+            estimated_reward1 = trajectory_estimated_reward(trajectory1)
+            estimated_reward2 = trajectory_estimated_reward(trajectory2)
+            real_reward1 = trajectory_reward(trajectory1)
+            real_reward2 = trajectory_reward(trajectory2)
+            estimated_probs = probability3(estimated_reward1, estimated_reward2, eps=UNCERTAINTY_REGION_EPSILON)
+            real_probs = probability3(real_reward1, real_reward2, eps=UNCERTAINTY_REGION_EPSILON)
+            estimated_probs_list.append(estimated_probs.cpu().numpy())
+            real_probs_list.append(real_probs.cpu().numpy())
+    
+    mse = np.mean((np.array(estimated_probs_list) - np.array(real_probs_list))**2)
+    print(f"MSE: {mse}")
+    #plt.plot_durations(mse)
+        
+
+
 # Training Loop
-for episode in range(EPISODES):
-    optimize_policy(POLICY_ITERATIONS_PER_EPISODE)
-    optimize_reward(REWARD_ITERATIONS_PER_EPISODE)
+for batch_index in range(TOTAL_EPISODES // POLICY_ITERATIONS_PER_BATCH):
+    #episode = batch_index * POLICY_ITERATIONS_PER_BATCH
+    optimize_policy(POLICY_ITERATIONS_PER_BATCH)
+    optimize_reward(REWARD_ITERATIONS_PER_BATCH)
+    #compare_estimate_reward(15)
 
 env.close()
 print("finished!")
