@@ -1,35 +1,61 @@
-# RLHF
+# Three-Valued Feedback for Reinforcement Learning with Predicted Human Feedback
 
-### Current Questions
-Currently I am using for the length of the trajectory simply the total length an episode took. For cartpole this ranges from around 10 to maximum 500. Should this be changed?
-Yes, try limit trajectory to about 10 to 50.
+This implementation is based on the paper "Deep Reinforcement Learning from Human Preferences" by Christiano and Leike et al.
 
-In the atari paper, the reward estimator formula only has one observation-action as input, but in practice they use 4 observation-actions. Should I include this?
-If necessary. For cartpole not needed because of velocity.
+I tried to expand on the two-valued feedback function used in the paper, by creating a three-vaued feedback function. These functions where then used to predict human feedback, with which a reward estimator would be trained. The policy would then be optimized with only the estimated reward gathered from this reward estimator.
 
-How to compare different results, when so much randomness is affecting results?
+## Installation and Requirements
 
-### To Do
-Calculating the loss with the atari paper formula in 2.2.3, currently I am not including the third case of sigma = 0.5, I intent to test if that would improve the algorithm/computation
+In this program I am using:
 
-test with more environments
+- Python 3.12.7
+- PyTorch 2.4.1
+- Gymnasium 1.0.0
 
-replace temporary code/algorithms with rllib algorithms
+Should these be installed, the program should be able to run. For the plotting of graphs, I used some Unix commands (paste, columns and tr) to manipulated the dat files the program generates, and gnuplot to plot the graphs. 
 
-add better ploting for better visualization
+# Usage
 
-Improve and try different algorithms for the optimization of the policy and the reward estimator.
+To run the program and see a live plotting, run:
 
-Optimze the code to increase performance
+```sh
+$ make demo
+```
 
-### current results interpretation
-It seems to be working, but the results are a bit inconsistent
+or
 
-### current output
-see output_1.png
-see output_2.png
-see output_3.png
-see output_4.png
+```sh
+$ python main.py demo
+```
 
-each with declining eps values, and the last one using the atari paper's probability function.
-the outputs are just the results of the first try.
+To run the RL program with the real reward instead of an estimated reward, and create the corresponding dat files
+
+```sh
+$ make run_real
+```
+
+To run the RL program with the two-valued feedback function 10 times, and create the corresponding dat files
+
+```sh
+$ make run_noeps
+```
+
+To run the RL program with various epsilon values 10 times each, and create the corresponding dat files
+
+```sh
+$ make run_eps
+```
+
+# Folders and Files
+
+- dat folder: Contains the dat files generated from the program and the combined dat files used for the plotting.
+- gnuplotscripts folder: Contains the gnuplot scripts used to generate the pdf plots from the dat files.
+- plot folder: Contains the generated pdf plots.
+- feedback_function.py: Has the two-valued and three-valued feedback functions.
+- main.py: Instantiates and runs the RLHF class with different parameters.
+- plotter.py: Is used to visualize live plotting of the running program.
+- policy_network.py: Is the neural newtork used for the policy in the RLHF class.
+- reward_estimatior.py: This class is in charge of managing the multiple reward estimator neural networks, optimzing them, selecting queries and predicting human feedback based on the feedback functions.
+- reward_network.py: Is the neural newtork used for the reward estimators in the RewardEstimator class.
+- rhlf.py: This class manages the Environment and the policy.
+- writers.py: Has writer classes that generate the specific dat files.

@@ -2,51 +2,67 @@ import matplotlib.pyplot as plt
 import torch
 
 class Plotter:
-    def __init__(self, ignore_eps=False, eps=None, policy_lr=None, reward_lr=None, policy_reward_ratio=None) -> None:
+    """This class plots up to four subplots while the program is running. Intended for visualizing the training process immediately.
+    """
+    def __init__(self, title=''):
+        """
+        Args:
+            title (str, optional): The title of this plot. Defaults to ''.
+        """
+        self._values_dict = {}
+        self._mean_dict = {}
         plt.ion()
-        self.episode_durations = []
-        self.eps = eps
-        self.policy_lr = policy_lr
-        self.reward_lr = reward_lr
-        self.policy_reward_ratio = policy_reward_ratio
-        self.ignore_eps = ignore_eps
-
-    def plot_durations(self, new_episode_duration):
-        plt.figure(1)
-        self.episode_durations.append(new_episode_duration)
-        durations_t = torch.tensor(self.episode_durations, dtype=torch.float)
-        
-        plt.clf()
-        title = ''
-        
-        # Add parameters to the title if they are provided
-        if any(param is not None for param in [self.eps, self.policy_lr, self.reward_lr, self.policy_reward_ratio]):
-            #title += '\n'
-            if self.eps is not None:
-                if self.ignore_eps:
-                    title += f'ε=off  '
-                else:
-                    title += f'ε={self.eps:.2f}  '
-            if self.policy_lr is not None:
-                title += f'Policy LR={self.policy_lr:.2e}  '
-            if self.reward_lr is not None:
-                title += f'Reward LR={self.reward_lr:.2e}  '
-            if self.policy_reward_ratio is not None:
-                title += f'P/R Ratio={self.policy_reward_ratio}'
-        
         plt.title(title)
-        plt.xlabel('Episode')
-        plt.ylabel('Reward')
-        plt.plot(durations_t.numpy())
         
-        # Take 100 episode averages and plot them too
-        if len(durations_t) >= 100:
-            means = durations_t.unfold(0, 100, 1).mean(1).view(-1)
-            means = torch.cat((torch.zeros(99), means))
-            plt.plot(means.numpy())
+        # remove ticks of the main plot
+        ax = plt.gca()
+        ax.set_yticks([])
+        ax.set_xticks([])
+                
+    def plot_value(self, value: float, subplot: int = 1, average_over: int = 50, xLabel: str = 'Episode', yLabel: str = 'Reward') -> None:
+        """Add new value to the specific subplot and update that subplot.
 
-        plt.pause(0.001)  # Pause a bit so that plots are updated
+        Args:
+            value (float): The value to add to the subplot
+            subplot (int, optional): The subplot index. Only four subplots are supported. 1-4. Defaults to 1.
+            average_over (int, optional): The number of past values in this subplot to average over. Defaults to 50.
+            xLabel (str, optional): The title of the x axis in this subplot. Defaults to 'Episode'.
+            yLabel (str, optional): The title of the y axis in this subplot. Defaults to 'Reward'.
+        """
+        #check if subplot is valid 1-4
+        if subplot < 1 or subplot > 4:
+            raise ValueError("The subplot argument must be between 1 and 4, as this is a plot with four subplots.")
         
-    def show(self):
+        # Create the lists for this subplot in the dictionaries if they don't exist
+        if subplot not in self._values_dict:
+            self._values_dict[subplot] = []
+        if subplot not in self._mean_dict:
+            self._mean_dict[subplot] = []
+        
+        # Add the value to the list in the dictionary
+        self._values_dict[subplot].append(value)
+        durations_t = torch.tensor(self._values_dict[subplot], dtype=torch.float)
+        
+        # Clear the subplot and plot the values
+        ax = plt.subplot(220 + subplot)
+        ax.cla()
+        ax.plot(durations_t.numpy())
+
+        # Plot the average of the last values if wanted
+        if(average_over > 0):
+            # Calculate, save and plot the average of the last values based on the average_over argument
+            mean_length = min(len(durations_t), average_over)
+            self._mean_dict[subplot].append(torch.mean(durations_t[-mean_length:]))
+            mean_t = torch.tensor(self._mean_dict[subplot], dtype=torch.float)
+            ax.plot(mean_t.numpy())
+
+        # Set x and y labels
+        ax.set_xlabel(xLabel)
+        ax.set_ylabel(yLabel)
+        plt.pause(0.000001) # Pause a bit so that plots are updated
+        
+    def show(self) -> None:
+        """Pause the plot and display it until the user closes the window. This method should be called after the plotting is finshed.
+        """
         plt.ioff()
         plt.show()
