@@ -5,7 +5,6 @@ default:
 
 # Run the RL program with the real reward instead of an estimated reward, and create the corresponding dat files
 demo:
-	echo "Running demo"
 	$(PYTHON) $(MAIN_FILE) demo
 
 # Run the RL program with the real reward instead of an estimated reward, and create the corresponding dat files
