@@ -56,11 +56,11 @@ def single_with_writing(filename: str, epsilon: float = -100, real_reward: bool 
     if not real_reward:
         label_writer.write_to_file()
 
-def single_with_live_plotting(epsilon: float = 50) -> None:
+def single_with_live_plotting(epsilon: float = 10) -> None:
     """For testing and demos run the RL program with live plotting
 
     Args:
-        epsilon (float, optional): The epsilon value for the three-valued feedback. Defaults to 50.
+        epsilon (float, optional): The epsilon value for the three-valued feedback. Defaults to 10.
     """
     env_cartpole = gym.make("CartPole-v1")
     RLHF(env_cartpole, False, epsilon, reward_interval=10, policy_lr=0.001, reward_lr=0.00015, total_episodes=600, max_steps=510, memroy_size=500, exploration_decay=0.96, plotting=True).run()
