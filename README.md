@@ -2,7 +2,7 @@
 
 This implementation is based on the paper "Deep Reinforcement Learning from Human Preferences" by Christiano and Leike et al.
 
-I tried to expand on the two-valued feedback function used in the paper, by creating a three-vaued feedback function. These functions where then used to predict human feedback, with which a reward estimator would be trained. The policy would then be optimized with only the estimated reward gathered from this reward estimator.
+I tried to expand on the two-valued feedback function used in the paper, by creating a three-valued feedback function. These functions where then used to predict human feedback, with which a reward estimator would be trained. The policy would then be optimized with only the estimated reward gathered from this reward estimator.
 
 ## Installation and Requirements
 
@@ -12,17 +12,17 @@ In this program I am using:
 - PyTorch 2.4.1
 - Gymnasium 1.0.0
 
-Should these be installed, the program should be able to run. For the plotting of graphs, I used some Unix commands (paste, columns and tr) to manipulated the dat files the program generates, and gnuplot to plot the graphs. 
+Should these be installed, the program should be able to run. For the plotting of graphs, I used some Unix commands (paste, columns and tr) to manipulate the dat files the program generates, and gnuplot to plot the graphs. 
 
 # Usage
 
-To run the program and see a live plotting, run:
+To run the program and see a live plotting, use this command:
 
 ```sh
 $ make demo
 ```
 
-or
+or direcly use python:
 
 ```sh
 $ python main.py demo

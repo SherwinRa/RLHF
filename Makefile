@@ -61,11 +61,17 @@ plot_labels: dat/combined/labels/mainnoeps.dat dat/combined/labels/main0.dat dat
 	gnuplot -c gnuplotscripts/plot_labels_individual_per.gp dat/combined/labels/main100.dat plot/labels/main100_per.pdf
 	gnuplot -c gnuplotscripts/plot_labels_individual_per.gp dat/combined/labels/main1000.dat plot/labels/main1000_per.pdf
 
-# Remove all files in the dat folder and plot folder
+# Remove all files in the combined dat folder and plot folder
 clean:
 	rm -f dat/combined/reward/*.dat
 	rm -f dat/combined/labels/*.dat
 	rm -f dat/plot/reward/*.pdf
 	rm -f dat/plot/labels/*.pdf
 
-.PHONY: default demo run_real run_noeps run_noeps run_eps plot_reward plot_labels clean
+# Remove all dat files in the dat folder except in the combined folder
+clean_dat:
+	rm -f dat/reward/*.dat
+	rm -f dat/labels/*.dat
+
+
+.PHONY: default demo run_real run_noeps run_noeps run_eps plot_reward plot_labels clean clean_dat
